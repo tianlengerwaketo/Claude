@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { NearbyPerson, UserProfile } from '../types';
+import type { DetectedPerson, UserProfile } from '../types';
 import { EMOJI_PALETTE } from '../utils/profileEncoding';
+
+type DetectedPersonUpdate = Omit<DetectedPerson, 'firstDetectedAt'>;
 
 interface AppState {
   profile: UserProfile;
@@ -10,55 +12,59 @@ interface AppState {
   isSearching: boolean;
   isBluetoothOn: boolean;
   hasHydrated: boolean;
-  nearbyPeople: Record<string, NearbyPerson>;
+  /** Everyone ever detected - a persistent log, not a live-only radar. */
+  detectedPeople: Record<string, DetectedPerson>;
 
   setProfile: (profile: UserProfile) => void;
   setDetectable: (value: boolean) => void;
   setSearching: (value: boolean) => void;
   setBluetoothOn: (value: boolean) => void;
-  upsertNearbyPerson: (person: NearbyPerson) => void;
-  pruneStalePeople: (olderThanMs: number) => void;
-  clearNearbyPeople: () => void;
+  upsertDetectedPerson: (person: DetectedPersonUpdate) => void;
+  removeDetectedPerson: (id: string) => void;
+  clearDetectedPeople: () => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      profile: { name: '', emoji: EMOJI_PALETTE[0] },
+      profile: { name: '', emoji: EMOJI_PALETTE[0], phone: '' },
       isDetectable: false,
       isSearching: false,
       isBluetoothOn: false,
       hasHydrated: false,
-      nearbyPeople: {},
+      detectedPeople: {},
 
       setProfile: (profile) => set({ profile }),
       setDetectable: (value) => set({ isDetectable: value }),
       setSearching: (value) => set({ isSearching: value }),
       setBluetoothOn: (value) => set({ isBluetoothOn: value }),
 
-      upsertNearbyPerson: (person) =>
-        set((state) => ({
-          nearbyPeople: { ...state.nearbyPeople, [person.id]: person },
-        })),
-
-      pruneStalePeople: (olderThanMs) =>
+      upsertDetectedPerson: (person) =>
         set((state) => {
-          const now = Date.now();
-          const next: Record<string, NearbyPerson> = {};
-          for (const [id, person] of Object.entries(state.nearbyPeople)) {
-            if (now - person.lastSeenAt <= olderThanMs) next[id] = person;
-          }
-          return { nearbyPeople: next };
+          const existing = state.detectedPeople[person.id];
+          return {
+            detectedPeople: {
+              ...state.detectedPeople,
+              [person.id]: { ...person, firstDetectedAt: existing?.firstDetectedAt ?? person.detectedAt },
+            },
+          };
         }),
 
-      clearNearbyPeople: () => set({ nearbyPeople: {} }),
+      removeDetectedPerson: (id) =>
+        set((state) => {
+          const next = { ...state.detectedPeople };
+          delete next[id];
+          return { detectedPeople: next };
+        }),
+
+      clearDetectedPeople: () => set({ detectedPeople: {} }),
     }),
     {
       name: 'person-detection-profile',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only the profile is worth remembering across launches - detection
-      // state and the nearby list should always start fresh.
-      partialize: (state) => ({ profile: state.profile }),
+      // The profile and detection history are worth remembering across
+      // launches; live toggle/search state should always start fresh.
+      partialize: (state) => ({ profile: state.profile, detectedPeople: state.detectedPeople }),
       onRehydrateStorage: () => () => useAppStore.setState({ hasHydrated: true }),
     }
   )

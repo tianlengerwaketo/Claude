@@ -7,37 +7,59 @@ alcance (unos metros).
 
 ## Cómo funciona
 
-1. Activas el interruptor **"Quiero ser detectado"**.
-2. Tu teléfono empieza a **anunciar** (BLE advertising) un pequeño paquete con
-   tu nombre/apodo y un emoji, usando un UUID de servicio propio de esta app.
-3. Al mismo tiempo, tu teléfono **escanea** buscando ese mismo UUID en el aire.
-4. Cuando detecta a otra persona con la app abierta y el interruptor también
-   activado, aparece en tu lista con una estimación de qué tan cerca está
-   ("Muy cerca", "Cerca", "Lejos"), calculada a partir de la potencia de la
-   señal (RSSI).
-5. Si apagas el interruptor, dejas de anunciarte y de ver a los demás — es
-   recíproco: solo ves a quien también te puede ver a ti.
+Son dos acciones independientes:
+
+1. **"Quiero ser detectado"** (interruptor): tu teléfono empieza a **anunciar**
+   (BLE advertising) un paquete con tu nombre/apodo, emoji y número de
+   WhatsApp, usando un UUID de servicio propio de esta app. Controla si
+   *otros* pueden encontrarte a vos; no busca a nadie por sí solo.
+2. **"Buscar gente"** (botón): tu teléfono **escanea** buscando ese mismo
+   UUID en el aire. Es una acción explícita — abrir la app o activar el
+   interruptor nunca dispara un escaneo por sí solo.
+3. A cada persona detectada la agrega (o actualiza, si ya la habías
+   detectado antes) a una **lista persistente**: nombre, emoji, distancia
+   aproximada ("Muy cerca", "Cerca", "Lejos" según el RSSI) y fecha/hora de
+   detección. La lista no expira sola — solo se borra si vaciás todo o
+   eliminás a alguien manualmente.
+4. Desde cada tarjeta de la lista podés tocar **"Abrir WhatsApp"** para
+   iniciar un chat directo con esa persona. Esta opción solo existe del lado
+   de quien busca — quien es detectado no ve ninguna lista ni recibe aviso
+   de haber sido encontrado.
 
 No hay backend, no hay cuentas, no se guarda ni transmite tu ubicación real.
 Todo el "descubrimiento" ocurre localmente entre los teléfonos que están a
 pocos metros unos de otros.
 
+### Aviso de privacidad sobre el número de WhatsApp
+
+El número de teléfono viaja **en texto plano dentro del paquete de anuncio
+BLE** mientras "Quiero ser detectado" está activado. Eso significa que
+cualquier persona cercana con una app genérica de escaneo Bluetooth — no
+solo quienes usan esta app — puede llegar a leerlo. No hay cifrado posible
+en un anuncio BLE público sin agregar un servidor intermediario o una
+conexión GATT autenticada, que esta app no implementa. Este trade-off está
+también explicado en la pantalla de perfil, donde se pide el número.
+
 ## Estructura del proyecto
 
 ```
 src/
-  constants/ble.ts        UUID del servicio, ID de fabricante, timeouts
-  types/                  Tipos compartidos (UserProfile, NearbyPerson)
+  constants/ble.ts        UUID del servicio, ID de fabricante, límites de bytes
+  types/                  Tipos compartidos (UserProfile, DetectedPerson)
   utils/
     base64.ts              Codificación/decodificación base64 sin dependencias
-    profileEncoding.ts      Empaqueta nombre + emoji en pocos bytes para el anuncio BLE
+    profileEncoding.ts      Empaqueta emoji + teléfono (BCD) + nombre en pocos bytes para el anuncio BLE
     distance.ts             RSSI -> distancia aproximada y nivel de proximidad
+    time.ts                 Formatea la fecha/hora de detección
+    whatsapp.ts              Abre un chat de WhatsApp por número de teléfono
   services/
     bleService.ts            Escaneo (react-native-ble-plx) y anuncio (react-native-ble-advertiser)
     permissions.ts            Permisos de Bluetooth/ubicación según versión de Android
-  store/useAppStore.ts       Estado global (zustand) con persistencia del perfil
-  hooks/useProximityDetection.ts  Ciclo de vida completo del BLE atado al interruptor
-  components/                DetectableToggle, NearbyPersonCard
+  store/useAppStore.ts       Estado global (zustand): perfil y lista de detectados persistidos,
+                              toggle/búsqueda en memoria
+  hooks/useProximityDetection.ts  Dos ciclos de vida BLE independientes: anunciar (atado al
+                              interruptor) y escanear (atado al botón "Buscar gente")
+  components/                DetectableToggle, SearchButton, DetectedPersonCard
   screens/                    HomeScreen, ProfileScreen
   navigation/RootNavigator.tsx
 ```

@@ -21,6 +21,7 @@ export interface ScannedPerson {
   rssi: number;
   name: string;
   emoji: string;
+  phone: string;
 }
 
 let isScanning = false;
@@ -38,12 +39,12 @@ export function startScanning(onFound: (person: ScannedPerson) => void): void {
     if (!device || device.rssi == null || !device.manufacturerData) return;
 
     // Manufacturer data starts with the 2-byte company id; our profile
-    // payload (emoji index + name bytes) follows it.
+    // payload (emoji index + phone digits + name bytes) follows it.
     const payload = base64ToBytes(device.manufacturerData).slice(2);
     if (payload.length === 0) return;
 
-    const { name, emoji } = decodeProfile(payload);
-    onFound({ id: device.id, rssi: device.rssi, name, emoji });
+    const { name, emoji, phone } = decodeProfile(payload);
+    onFound({ id: device.id, rssi: device.rssi, name, emoji, phone });
   });
 }
 

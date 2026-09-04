@@ -1,4 +1,4 @@
-import { MAX_NAME_BYTES } from '../constants/ble';
+import { MAX_NAME_BYTES, PHONE_PAYLOAD_BYTES } from '../constants/ble';
 import type { UserProfile } from '../types';
 
 /**
@@ -74,15 +74,53 @@ function utf8Decode(bytes: number[]): string {
   return result;
 }
 
+/**
+ * Packs digits two-per-byte (BCD nibbles) so a full phone number fits in a
+ * few bytes of the tiny BLE advertising payload instead of one byte per
+ * digit as UTF-8 text would cost. 0xF is not a digit, so it doubles as an
+ * end-of-number marker for numbers shorter than the fixed slot.
+ */
+function packDigits(digits: string, byteLength: number): number[] {
+  const clean = digits.replace(/\D/g, '').slice(0, byteLength * 2);
+  const nibbles: number[] = [];
+  for (const char of clean) nibbles.push(char.charCodeAt(0) - 48);
+  while (nibbles.length < byteLength * 2) nibbles.push(0xf);
+
+  const bytes: number[] = [];
+  for (let i = 0; i < nibbles.length; i += 2) {
+    bytes.push((nibbles[i] << 4) | nibbles[i + 1]);
+  }
+  return bytes;
+}
+
+function unpackDigits(bytes: number[]): string {
+  let digits = '';
+  for (const byte of bytes) {
+    const high = (byte >> 4) & 0xf;
+    if (high === 0xf) break;
+    digits += String(high);
+
+    const low = byte & 0xf;
+    if (low === 0xf) break;
+    digits += String(low);
+  }
+  return digits;
+}
+
 export function encodeProfile(profile: UserProfile): number[] {
   const emojiIndex = Math.max(0, EMOJI_PALETTE.indexOf(profile.emoji));
+  const phoneBytes = packDigits(profile.phone, PHONE_PAYLOAD_BYTES);
   const nameBytes = utf8Encode(profile.name).slice(0, MAX_NAME_BYTES);
-  return [emojiIndex, ...nameBytes];
+  return [emojiIndex, ...phoneBytes, ...nameBytes];
 }
 
 export function decodeProfile(bytes: number[]): UserProfile {
-  const [emojiIndex, ...nameBytes] = bytes;
+  const [emojiIndex, ...rest] = bytes;
+  const phoneBytes = rest.slice(0, PHONE_PAYLOAD_BYTES);
+  const nameBytes = rest.slice(PHONE_PAYLOAD_BYTES);
+
   const emoji = EMOJI_PALETTE[emojiIndex] ?? EMOJI_PALETTE[0];
+  const phone = unpackDigits(phoneBytes);
   const name = utf8Decode(nameBytes).trim();
-  return { emoji, name: name || 'Alguien' };
+  return { emoji, name: name || 'Alguien', phone };
 }

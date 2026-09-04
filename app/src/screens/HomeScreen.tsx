@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DetectableToggle } from '../components/DetectableToggle';
-import { NearbyPersonCard } from '../components/NearbyPersonCard';
+import { DetectedPersonCard } from '../components/DetectedPersonCard';
 import { SearchButton } from '../components/SearchButton';
 import { useProximityDetection } from '../hooks/useProximityDetection';
 import { useAppStore } from '../store/useAppStore';
@@ -20,7 +20,9 @@ export function HomeScreen({ navigation }: Props) {
   const setDetectable = useAppStore((state) => state.setDetectable);
   const setSearching = useAppStore((state) => state.setSearching);
   const profile = useAppStore((state) => state.profile);
-  const nearbyPeople = useAppStore((state) => state.nearbyPeople);
+  const detectedPeople = useAppStore((state) => state.detectedPeople);
+  const removeDetectedPerson = useAppStore((state) => state.removeDetectedPerson);
+  const clearDetectedPeople = useAppStore((state) => state.clearDetectedPeople);
   const hasHydrated = useAppStore((state) => state.hasHydrated);
 
   useEffect(() => {
@@ -28,9 +30,16 @@ export function HomeScreen({ navigation }: Props) {
   }, [hasHydrated, profile.name, navigation]);
 
   const people = useMemo(
-    () => Object.values(nearbyPeople).sort((a, b) => a.distanceMeters - b.distanceMeters),
-    [nearbyPeople]
+    () => Object.values(detectedPeople).sort((a, b) => b.detectedAt - a.detectedAt),
+    [detectedPeople]
   );
+
+  const confirmClearAll = () => {
+    Alert.alert('Vaciar lista', 'Se van a borrar todas las personas detectadas. Esta acción no se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Vaciar', style: 'destructive', onPress: clearDetectedPeople },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -45,23 +54,30 @@ export function HomeScreen({ navigation }: Props) {
 
       <SearchButton isSearching={isSearching} bluetoothOn={isBluetoothOn} onPress={() => setSearching(!isSearching)} />
 
-      {!isSearching ? (
+      <View style={styles.listHeader}>
+        <Text style={styles.listTitle}>Detectados{people.length > 0 ? ` (${people.length})` : ''}</Text>
+        {people.length > 0 && (
+          <Pressable onPress={confirmClearAll}>
+            <Text style={styles.clearAll}>Vaciar lista</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {people.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Toca "Buscar gente" para ver quién cerca activó "Quiero ser detectado".</Text>
-        </View>
-      ) : people.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Buscando gente cerca...</Text>
+          <Text style={styles.emptyText}>
+            {isSearching ? 'Buscando gente cerca...' : 'Todavía no detectaste a nadie.'}
+          </Text>
           <Text style={styles.emptyHint}>
             Solo aparecen personas con esta app abierta y "Quiero ser detectado" activado, a pocos metros de
-            distancia.
+            distancia. Quedan en esta lista hasta que la vacíes.
           </Text>
         </View>
       ) : (
         <FlatList
           data={people}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <NearbyPersonCard person={item} />}
+          renderItem={({ item }) => <DetectedPersonCard person={item} onDelete={removeDetectedPerson} />}
           contentContainerStyle={styles.list}
         />
       )}
@@ -87,6 +103,21 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#6b7280',
+  },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  listTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  clearAll: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#dc2626',
   },
   list: {
     gap: 10,

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { PRUNE_INTERVAL_MS, STALE_TIMEOUT_MS } from '../constants/ble';
 import {
   destroyBleManager,
   onBluetoothStateChange,
@@ -26,9 +25,7 @@ export function useProximityDetection() {
   const profile = useAppStore((state) => state.profile);
   const isDetectable = useAppStore((state) => state.isDetectable);
   const isSearching = useAppStore((state) => state.isSearching);
-  const upsertNearbyPerson = useAppStore((state) => state.upsertNearbyPerson);
-  const pruneStalePeople = useAppStore((state) => state.pruneStalePeople);
-  const clearNearbyPeople = useAppStore((state) => state.clearNearbyPeople);
+  const upsertDetectedPerson = useAppStore((state) => state.upsertDetectedPerson);
   const setBluetoothOn = useAppStore((state) => state.setBluetoothOn);
 
   const permissionsGranted = useRef(false);
@@ -73,7 +70,6 @@ export function useProximityDetection() {
   useEffect(() => {
     if (!isSearching) {
       stopScanning();
-      clearNearbyPeople();
       return;
     }
 
@@ -83,26 +79,24 @@ export function useProximityDetection() {
       const granted = await ensurePermissions();
       if (!granted || cancelled) return;
 
-      startScanning(({ id, rssi, name, emoji }) => {
+      startScanning(({ id, rssi, name, emoji, phone }) => {
         const distanceMeters = rssiToDistanceMeters(rssi);
-        upsertNearbyPerson({
+        upsertDetectedPerson({
           id,
           name,
           emoji,
+          phone,
           rssi,
           distanceMeters,
           proximity: distanceToProximity(distanceMeters),
-          lastSeenAt: Date.now(),
+          detectedAt: Date.now(),
         });
       });
     })();
 
-    const pruneInterval = setInterval(() => pruneStalePeople(STALE_TIMEOUT_MS), PRUNE_INTERVAL_MS);
-
     return () => {
       cancelled = true;
-      clearInterval(pruneInterval);
       stopScanning();
     };
-  }, [isSearching, ensurePermissions, upsertNearbyPerson, pruneStalePeople, clearNearbyPeople]);
+  }, [isSearching, ensurePermissions, upsertDetectedPerson]);
 }

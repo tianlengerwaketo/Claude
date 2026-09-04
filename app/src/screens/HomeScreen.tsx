@@ -6,6 +6,7 @@ import { DetectedPersonCard } from '../components/DetectedPersonCard';
 import { SearchButton } from '../components/SearchButton';
 import { useProximityDetection } from '../hooks/useProximityDetection';
 import { useAppStore } from '../store/useAppStore';
+import type { DetectedPerson } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
@@ -39,6 +40,10 @@ export function HomeScreen({ navigation }: Props) {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Vaciar', style: 'destructive', onPress: clearDetectedPeople },
     ]);
+  };
+
+  const openChat = (person: DetectedPerson) => {
+    navigation.navigate('Chat', { token: person.token, name: person.name, emoji: person.emoji });
   };
 
   return (
@@ -76,8 +81,8 @@ export function HomeScreen({ navigation }: Props) {
       ) : (
         <FlatList
           data={people}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <DetectedPersonCard person={item} onDelete={removeDetectedPerson} />}
+          keyExtractor={(item) => item.token}
+          renderItem={({ item }) => <DetectedPersonCard person={item} onDelete={removeDetectedPerson} onOpenChat={openChat} />}
           contentContainerStyle={styles.list}
         />
       )}

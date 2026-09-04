@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MAX_NAME_BYTES, MAX_PHONE_DIGITS } from '../constants/ble';
+import { EMOJI_PALETTE } from '../constants/emoji';
 import { useAppStore } from '../store/useAppStore';
-import { EMOJI_PALETTE } from '../utils/profileEncoding';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
+const MAX_NAME_LENGTH = 24;
 const MIN_PHONE_DIGITS = 8;
 
 export function ProfileScreen({ navigation }: Props) {
@@ -20,11 +20,12 @@ export function ProfileScreen({ navigation }: Props) {
   const [phone, setPhone] = useState(profile.phone);
 
   const phoneDigits = phone.replace(/\D/g, '');
-  const canSave = name.trim().length > 0 && phoneDigits.length >= MIN_PHONE_DIGITS;
+  const phoneIsValid = phoneDigits.length === 0 || phoneDigits.length >= MIN_PHONE_DIGITS;
+  const canSave = name.trim().length > 0 && phoneIsValid;
 
   const handleSave = () => {
     if (!canSave) return;
-    setProfile({ name: name.trim().slice(0, MAX_NAME_BYTES), emoji, phone: phoneDigits.slice(0, MAX_PHONE_DIGITS) });
+    setProfile({ name: name.trim().slice(0, MAX_NAME_LENGTH), emoji, phone: phoneDigits });
     navigation.goBack();
   };
 
@@ -39,12 +40,12 @@ export function ProfileScreen({ navigation }: Props) {
           style={styles.input}
           value={name}
           onChangeText={setName}
-          maxLength={MAX_NAME_BYTES}
+          maxLength={MAX_NAME_LENGTH}
           placeholder="Ej. Tian"
           placeholderTextColor="#9ca3af"
         />
 
-        <Text style={styles.label}>Tu WhatsApp</Text>
+        <Text style={styles.label}>Tu WhatsApp (opcional)</Text>
         <TextInput
           style={styles.input}
           value={phone}
@@ -55,10 +56,10 @@ export function ProfileScreen({ navigation }: Props) {
           placeholderTextColor="#9ca3af"
         />
         <Text style={styles.hint}>
-          Incluí el código de país. Quienes te detecten van a poder abrirte un chat de WhatsApp directo - por
-          eso este número se transmite por Bluetooth junto con tu nombre mientras "Quiero ser detectado" esté
-          activado, visible para cualquiera con un escáner Bluetooth cerca, no solo para esta app.
+          No se transmite por Bluetooth ni se comparte automáticamente. Solo se envía si vos tocás "Compartir mi
+          WhatsApp" dentro de un chat, una vez que decidas hacerlo con esa persona en particular.
         </Text>
+        {!phoneIsValid && <Text style={styles.error}>Ingresá un número completo o dejalo vacío.</Text>}
 
         <Text style={styles.label}>Elige un emoji</Text>
         <View style={styles.emojiGrid}>
@@ -109,6 +110,11 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: 12,
     color: '#9ca3af',
+    marginTop: -6,
+  },
+  error: {
+    fontSize: 12,
+    color: '#dc2626',
     marginTop: -6,
   },
   input: {

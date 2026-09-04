@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { EMOJI_PALETTE } from '../constants/emoji';
 import type { DetectedPerson, UserProfile } from '../types';
-import { EMOJI_PALETTE } from '../utils/profileEncoding';
+import { generateDeviceToken } from '../utils/token';
 
 type DetectedPersonUpdate = Omit<DetectedPerson, 'firstDetectedAt'>;
 
 interface AppState {
+  /** This install's own BLE broadcast token / Firestore presence+chat id. Generated once, persisted forever. */
+  deviceToken: string;
   profile: UserProfile;
   isDetectable: boolean;
   isSearching: boolean;
@@ -20,13 +23,14 @@ interface AppState {
   setSearching: (value: boolean) => void;
   setBluetoothOn: (value: boolean) => void;
   upsertDetectedPerson: (person: DetectedPersonUpdate) => void;
-  removeDetectedPerson: (id: string) => void;
+  removeDetectedPerson: (token: string) => void;
   clearDetectedPeople: () => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
+      deviceToken: generateDeviceToken(),
       profile: { name: '', emoji: EMOJI_PALETTE[0], phone: '' },
       isDetectable: false,
       isSearching: false,
@@ -41,19 +45,19 @@ export const useAppStore = create<AppState>()(
 
       upsertDetectedPerson: (person) =>
         set((state) => {
-          const existing = state.detectedPeople[person.id];
+          const existing = state.detectedPeople[person.token];
           return {
             detectedPeople: {
               ...state.detectedPeople,
-              [person.id]: { ...person, firstDetectedAt: existing?.firstDetectedAt ?? person.detectedAt },
+              [person.token]: { ...person, firstDetectedAt: existing?.firstDetectedAt ?? person.detectedAt },
             },
           };
         }),
 
-      removeDetectedPerson: (id) =>
+      removeDetectedPerson: (token) =>
         set((state) => {
           const next = { ...state.detectedPeople };
-          delete next[id];
+          delete next[token];
           return { detectedPeople: next };
         }),
 
@@ -62,9 +66,14 @@ export const useAppStore = create<AppState>()(
     {
       name: 'person-detection-profile',
       storage: createJSONStorage(() => AsyncStorage),
-      // The profile and detection history are worth remembering across
-      // launches; live toggle/search state should always start fresh.
-      partialize: (state) => ({ profile: state.profile, detectedPeople: state.detectedPeople }),
+      // The device token, profile and detection history are worth
+      // remembering across launches; live toggle/search state should
+      // always start fresh.
+      partialize: (state) => ({
+        deviceToken: state.deviceToken,
+        profile: state.profile,
+        detectedPeople: state.detectedPeople,
+      }),
       onRehydrateStorage: () => () => useAppStore.setState({ hasHydrated: true }),
     }
   )

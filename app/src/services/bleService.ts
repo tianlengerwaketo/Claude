@@ -2,8 +2,7 @@ import { BleManager } from 'react-native-ble-plx';
 import BLEAdvertiser from 'react-native-ble-advertiser';
 import { APP_SERVICE_UUID, COMPANY_ID } from '../constants/ble';
 import { base64ToBytes } from '../utils/base64';
-import { decodeProfile, encodeProfile } from '../utils/profileEncoding';
-import type { UserProfile } from '../types';
+import { bytesToHex, hexToBytes } from '../utils/token';
 
 /**
  * Two libraries split the work because no single actively-maintained one
@@ -13,15 +12,19 @@ import type { UserProfile } from '../types';
  *   ourselves), which ble-plx does not support.
  * Both filter/advertise on the same APP_SERVICE_UUID, so we only ever see
  * other instances of this app, never unrelated Bluetooth devices.
+ *
+ * The advertisement payload is just our 8-byte device token - name, emoji
+ * and everything else needed to actually reach someone lives in Firestore,
+ * looked up by that token once discovered (see presenceService.ts). BLE's
+ * advertising payload is only a handful of bytes, nowhere near enough for a
+ * profile plus a phone number, and a raw token avoids ever having to
+ * broadcast anything personal over the air in the clear.
  */
 const bleManager = new BleManager();
 
 export interface ScannedPerson {
-  id: string;
+  token: string;
   rssi: number;
-  name: string;
-  emoji: string;
-  phone: string;
 }
 
 let isScanning = false;
@@ -38,13 +41,12 @@ export function startScanning(onFound: (person: ScannedPerson) => void): void {
     }
     if (!device || device.rssi == null || !device.manufacturerData) return;
 
-    // Manufacturer data starts with the 2-byte company id; our profile
-    // payload (emoji index + phone digits + name bytes) follows it.
+    // Manufacturer data starts with the 2-byte company id; the sender's
+    // device token follows it.
     const payload = base64ToBytes(device.manufacturerData).slice(2);
     if (payload.length === 0) return;
 
-    const { name, emoji, phone } = decodeProfile(payload);
-    onFound({ id: device.id, rssi: device.rssi, name, emoji, phone });
+    onFound({ token: bytesToHex(payload), rssi: device.rssi });
   });
 }
 
@@ -54,15 +56,14 @@ export function stopScanning(): void {
   isScanning = false;
 }
 
-export async function startAdvertising(profile: UserProfile): Promise<void> {
+export async function startAdvertising(myToken: string): Promise<void> {
   if (isAdvertising) {
     await stopAdvertising();
   }
 
   BLEAdvertiser.setCompanyId(COMPANY_ID);
-  const payload = encodeProfile(profile);
 
-  await BLEAdvertiser.broadcast([APP_SERVICE_UUID], payload, {
+  await BLEAdvertiser.broadcast([APP_SERVICE_UUID], hexToBytes(myToken), {
     advertiseMode: BLEAdvertiser.ADVERTISE_MODE_BALANCED,
     txPowerLevel: BLEAdvertiser.ADVERTISE_TX_POWER_MEDIUM,
     connectable: false,

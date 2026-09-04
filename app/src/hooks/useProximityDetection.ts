@@ -8,13 +8,19 @@ import {
   stopScanning,
 } from '../services/bleService';
 import { requestBlePermissions } from '../services/permissions';
+import { getPresence, markNotDetectable, publishPresence } from '../services/presenceService';
 import { useAppStore } from '../store/useAppStore';
 import { distanceToProximity, rssiToDistanceMeters } from '../utils/distance';
 
+/** How often to refresh our own presence doc while detectable, so a killed app doesn't look "on" forever. */
+const PRESENCE_HEARTBEAT_MS = 60_000;
+
 /**
  * Owns the BLE lifecycle for two independent actions:
- * - "quiero ser detectado" (isDetectable) broadcasts your profile so others
- *   can find you. It says nothing about whether you're looking for anyone.
+ * - "quiero ser detectado" (isDetectable) broadcasts your device token so
+ *   others can find you, and mirrors that state to Firestore (presence/
+ *   {token}) so people who already found you can tell whether they're still
+ *   allowed to message you, even after you're both out of Bluetooth range.
  * - "buscar gente" (isSearching) scans for others broadcasting the same way.
  *   It's a deliberate, on-demand action - opening the app never starts a
  *   scan by itself, and only people who separately turned on their own
@@ -22,6 +28,8 @@ import { distanceToProximity, rssiToDistanceMeters } from '../utils/distance';
  * Mount this once near the root of the app.
  */
 export function useProximityDetection() {
+  const deviceToken = useAppStore((state) => state.deviceToken);
+  const hasHydrated = useAppStore((state) => state.hasHydrated);
   const profile = useAppStore((state) => state.profile);
   const isDetectable = useAppStore((state) => state.isDetectable);
   const isSearching = useAppStore((state) => state.isSearching);
@@ -29,6 +37,10 @@ export function useProximityDetection() {
   const setBluetoothOn = useAppStore((state) => state.setBluetoothOn);
 
   const permissionsGranted = useRef(false);
+  // Tokens we've already resolved a name/emoji for (or are resolving), so a
+  // burst of repeated adverts from someone already on the list doesn't
+  // trigger a Firestore read per blip.
+  const knownTokens = useRef<Set<string>>(new Set());
 
   const ensurePermissions = useCallback(async () => {
     if (permissionsGranted.current) return true;
@@ -45,7 +57,9 @@ export function useProximityDetection() {
   useEffect(() => destroyBleManager, []);
 
   useEffect(() => {
-    if (!isDetectable) {
+    // Wait for AsyncStorage hydration so we never advertise/publish under a
+    // throwaway token generated before the real persisted one loaded.
+    if (!hasHydrated || !isDetectable) {
       stopAdvertising();
       return;
     }
@@ -55,17 +69,22 @@ export function useProximityDetection() {
     (async () => {
       const granted = await ensurePermissions();
       if (!granted || cancelled) return;
-      await startAdvertising(profile);
+      await startAdvertising(deviceToken);
+      await publishPresence(deviceToken, profile);
     })();
+
+    const heartbeat = setInterval(() => publishPresence(deviceToken, profile).catch(() => {}), PRESENCE_HEARTBEAT_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(heartbeat);
       stopAdvertising();
+      // Only reached when this effect instance actually turned advertising
+      // on above, i.e. exactly on the on -> off transition (or unmount
+      // while on) - never fires spuriously while already off.
+      markNotDetectable(deviceToken, profile).catch(() => {});
     };
-    // profile changes are picked up next time the toggle cycles, not live -
-    // re-broadcasting on every keystroke would spam the radio.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDetectable]);
+  }, [hasHydrated, isDetectable, deviceToken, profile.name, profile.emoji]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isSearching) {
@@ -79,17 +98,36 @@ export function useProximityDetection() {
       const granted = await ensurePermissions();
       if (!granted || cancelled) return;
 
-      startScanning(({ id, rssi, name, emoji, phone }) => {
+      startScanning(async ({ token, rssi }) => {
         const distanceMeters = rssiToDistanceMeters(rssi);
+        const proximity = distanceToProximity(distanceMeters);
+        const detectedAt = Date.now();
+
+        const existing = useAppStore.getState().detectedPeople[token];
+        if (existing || knownTokens.current.has(token)) {
+          upsertDetectedPerson({
+            token,
+            name: existing?.name ?? 'Alguien',
+            emoji: existing?.emoji ?? '🙂',
+            rssi,
+            distanceMeters,
+            proximity,
+            detectedAt,
+          });
+          return;
+        }
+
+        knownTokens.current.add(token);
+        const presence = await getPresence(token);
+        if (cancelled) return;
         upsertDetectedPerson({
-          id,
-          name,
-          emoji,
-          phone,
+          token,
+          name: presence?.name ?? 'Alguien',
+          emoji: presence?.emoji ?? '🙂',
           rssi,
           distanceMeters,
-          proximity: distanceToProximity(distanceMeters),
-          detectedAt: Date.now(),
+          proximity,
+          detectedAt,
         });
       });
     })();

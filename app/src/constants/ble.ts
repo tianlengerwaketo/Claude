@@ -14,15 +14,3 @@ export const APP_SERVICE_UUID = '5b3f9d10-6c2a-4b8e-9a1d-7e2c4f8a91b3';
  * never assigned to a real company, so it's safe to use here.
  */
 export const COMPANY_ID = 0xffff;
-
-/**
- * Max bytes of display name we can fit in the advertising payload. Trimmed
- * down from before now that the phone number also has to fit in the same
- * tiny manufacturer-data budget (~6-10 bytes on most Android devices once
- * the 128-bit service UUID and flags eat into the legacy 31-byte packet).
- */
-export const MAX_NAME_BYTES = 10;
-
-/** Max phone digits we pack (2 per byte, BCD) - covers any E.164 number (15 digits). */
-export const MAX_PHONE_DIGITS = 16;
-export const PHONE_PAYLOAD_BYTES = MAX_PHONE_DIGITS / 2;

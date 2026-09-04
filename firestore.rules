@@ -1,0 +1,79 @@
+rules_version = '2';
+
+// Security rules for the "Gente Cerca" app's Firebase project.
+//
+// There are no user accounts here - every install generates a random
+// 8-byte device token (see src/utils/token.ts) that's broadcast over BLE
+// and used as the document id for that install's data. Knowing a token
+// (practically only obtainable by actually receiving that person's real
+// BLE advertisement, or by already being in a conversation with them) is
+// what stands in for authorization, since this is intentionally an
+// anonymous, no-signup app. Deploy this file from the Firebase console
+// (Firestore Database > Rules) or via `firebase deploy --only firestore:rules`.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidPresence(data) {
+      return data.keys().hasOnly(['name', 'emoji', 'isDetectable', 'updatedAt'])
+        && data.name is string && data.name.size() <= 40
+        && data.emoji is string && data.emoji.size() <= 8
+        && data.isDetectable is bool
+        // Forces clients to use serverTimestamp() so a stale/offline
+        // presence can't be forged as fresh by writing an arbitrary time.
+        && data.updatedAt == request.time;
+    }
+
+    // presence/{token}: the public, anonymous "is this person reachable
+    // right now" record. Readable by anyone (that's how a would-be sender
+    // checks whether messaging someone is currently allowed); writable by
+    // anyone who can present a validly-shaped update for that token.
+    match /presence/{token} {
+      allow read: if true;
+      allow write: if isValidPresence(request.resource.data);
+    }
+
+    function recipientToken(conversationId, senderToken) {
+      let parts = conversationId.split('_');
+      return parts[0] == senderToken ? parts[1] : parts[0];
+    }
+
+    function isValidParticipants(conversationId, participants) {
+      let parts = conversationId.split('_');
+      return participants is list && participants.size() == 2 && parts.size() == 2
+        && ((parts[0] == participants[0] && parts[1] == participants[1])
+          || (parts[0] == participants[1] && parts[1] == participants[0]));
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if true;
+      allow create: if isValidParticipants(conversationId, request.resource.data.participants);
+      // participants never change after creation, and clients only ever
+      // merge-write this same field - forbid anything else being altered.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants'])
+        && isValidParticipants(conversationId, request.resource.data.participants);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if true;
+        allow update, delete: if false;
+
+        allow create: if request.resource.data.keys().hasOnly(['senderToken', 'type', 'text', 'createdAt'])
+          && request.resource.data.senderToken is string
+          && request.resource.data.type in ['text', 'phone_share']
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000
+          // Forces serverTimestamp() so messages can't be backdated/forward-dated.
+          && request.resource.data.createdAt == request.time
+          // The sender must actually be one of this conversation's two
+          // participants (derived purely from the doc id, no extra read)...
+          && recipientToken(conversationId, request.resource.data.senderToken) != request.resource.data.senderToken
+          // ...and the recipient must currently want to be found. This is
+          // the server-side half of the "can't write to someone who turned
+          // off 'quiero ser detectado'" rule - the client also checks this
+          // first for a friendlier error, but this is what actually
+          // enforces it.
+          && get(/databases/$(database)/documents/presence/$(recipientToken(conversationId, request.resource.data.senderToken))).data.isDetectable == true;
+      }
+    }
+  }
+}

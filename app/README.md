@@ -1,67 +1,102 @@
-# Gente Cerca — detección de personas por Bluetooth
+# Gente Cerca — detección de personas por Bluetooth + chat
 
 App móvil (React Native + Expo) que permite detectar, en un mismo lugar, a otras
-personas que también quieren ser detectadas. No usa GPS ni servidores: todo
-funciona de forma peer-to-peer por **Bluetooth Low Energy (BLE)**, a corto
-alcance (unos metros).
+personas que también quieren ser detectadas, y después chatear con ellas aunque
+ya no estén cerca. El descubrimiento es peer-to-peer por **Bluetooth Low
+Energy (BLE)**, a corto alcance (unos metros); el chat usa un backend liviano
+(Firebase) precisamente porque Bluetooth deja de funcionar apenas alguien se
+aleja.
 
 ## Cómo funciona
 
 Son dos acciones independientes:
 
 1. **"Quiero ser detectado"** (interruptor): tu teléfono empieza a **anunciar**
-   (BLE advertising) un paquete con tu nombre/apodo, emoji y número de
-   WhatsApp, usando un UUID de servicio propio de esta app. Controla si
-   *otros* pueden encontrarte a vos; no busca a nadie por sí solo.
-2. **"Buscar gente"** (botón): tu teléfono **escanea** buscando ese mismo
-   UUID en el aire. Es una acción explícita — abrir la app o activar el
-   interruptor nunca dispara un escaneo por sí solo.
+   (BLE advertising) un token aleatorio de 8 bytes propio de esta instalación,
+   usando un UUID de servicio propio de la app. Ese mismo estado ("estoy
+   detectable") se refleja en Firestore, así quien ya te encontró antes puede
+   saber si todavía te puede escribir aunque ya no estén cerca. El interruptor
+   controla si *otros* pueden encontrarte a vos; no busca a nadie por sí solo.
+2. **"Buscar gente"** (botón): tu teléfono **escanea** buscando ese mismo UUID
+   en el aire. Es una acción explícita — abrir la app o activar el interruptor
+   nunca dispara un escaneo por sí solo. Al captar el token de alguien, busca
+   su nombre/emoji público en Firestore.
 3. A cada persona detectada la agrega (o actualiza, si ya la habías
    detectado antes) a una **lista persistente**: nombre, emoji, distancia
    aproximada ("Muy cerca", "Cerca", "Lejos" según el RSSI) y fecha/hora de
    detección. La lista no expira sola — solo se borra si vaciás todo o
    eliminás a alguien manualmente.
-4. Desde cada tarjeta de la lista podés tocar **"Abrir WhatsApp"** para
-   iniciar un chat directo con esa persona. Esta opción solo existe del lado
-   de quien busca — quien es detectado no ve ninguna lista ni recibe aviso
-   de haber sido encontrado.
+4. Desde cada tarjeta de la lista podés tocar **"Abrir chat"**. La
+   conversación sigue funcionando por internet aunque ninguno de los dos siga
+   en rango de Bluetooth — para eso existe el backend. Si la otra persona
+   apaga "Quiero ser detectado", no le podés seguir escribiendo hasta que lo
+   vuelva a activar (se chequea en el momento de cada envío, tanto en el
+   cliente como en las reglas de Firestore). Esta opción solo existe del lado
+   de quien busca — quien es detectado no ve ninguna lista ni recibe aviso de
+   haber sido encontrado.
+5. El número de teléfono es **opcional y nunca se transmite por Bluetooth ni
+   se comparte solo**. Dentro de un chat, cualquiera de los dos puede tocar
+   "Compartir mi WhatsApp" si decide hacerlo con esa persona en particular; el
+   otro lado recibe un botón para abrir esa conversación de WhatsApp.
 
-No hay backend, no hay cuentas, no se guarda ni transmite tu ubicación real.
-Todo el "descubrimiento" ocurre localmente entre los teléfonos que están a
-pocos metros unos de otros.
+No se guarda ni transmite tu ubicación real, y no hay cuentas de usuario -
+cada instalación es anónima, identificada solo por su token aleatorio.
 
-### Aviso de privacidad sobre el número de WhatsApp
+## Backend (chat)
 
-El número de teléfono viaja **en texto plano dentro del paquete de anuncio
-BLE** mientras "Quiero ser detectado" está activado. Eso significa que
-cualquier persona cercana con una app genérica de escaneo Bluetooth — no
-solo quienes usan esta app — puede llegar a leerlo. No hay cifrado posible
-en un anuncio BLE público sin agregar un servidor intermediario o una
-conexión GATT autenticada, que esta app no implementa. Este trade-off está
-también explicado en la pantalla de perfil, donde se pide el número.
+El chat necesita Firebase (plan gratuito Spark alcanza de sobra para esto):
+
+1. Creá un proyecto en <https://console.firebase.google.com>.
+2. **Build > Firestore Database > Create database** (modo producción).
+3. **Configuración del proyecto > General > Tus apps > Agregar app (Web)** -
+   te da un objeto de configuración.
+4. Pegá esos valores en `src/services/firebaseConfig.ts` (no son secretos:
+   la seguridad de Firebase vive en las reglas, no en ocultar esta config).
+5. Publicá `/firestore.rules` (raíz del repo, no de `app/`) en **Firestore
+   Database > Reglas**, o con la CLI: `firebase deploy --only firestore:rules`.
+
+Sin este paso, la detección por Bluetooth sigue funcionando (mostrará
+"Alguien" en vez del nombre real, ya que no hay Firestore para buscarlo), pero
+el chat no va a poder enviar ni recibir mensajes.
+
+### Modelo de datos y seguridad
+
+No hay autenticación de usuarios: cada instalación es un token aleatorio de
+8 bytes (`src/utils/token.ts`), y conocerlo (solo posible si esa persona te lo
+transmitió por Bluetooth, o ya estás en una conversación con ella) es lo que
+reemplaza el login. Las reglas (`/firestore.rules`) validan la forma de cada
+documento y, en cada mensaje nuevo, exigen que el destinatario tenga
+`isDetectable == true` en ese momento - es la aplicación real (no solo del
+lado del cliente) de "no se le puede escribir si apagó el interruptor".
 
 ## Estructura del proyecto
 
 ```
 src/
-  constants/ble.ts        UUID del servicio, ID de fabricante, límites de bytes
-  types/                  Tipos compartidos (UserProfile, DetectedPerson)
+  constants/
+    ble.ts                   UUID del servicio, ID de fabricante
+    emoji.ts                  Paleta de emojis para el perfil
+  types/                     Tipos compartidos (UserProfile, DetectedPerson, Presence, ChatMessage)
   utils/
-    base64.ts              Codificación/decodificación base64 sin dependencias
-    profileEncoding.ts      Empaqueta emoji + teléfono (BCD) + nombre en pocos bytes para el anuncio BLE
-    distance.ts             RSSI -> distancia aproximada y nivel de proximidad
-    time.ts                 Formatea la fecha/hora de detección
-    whatsapp.ts              Abre un chat de WhatsApp por número de teléfono
+    base64.ts                 Codificación/decodificación base64 sin dependencias
+    token.ts                   Genera y (de)serializa el token de dispositivo de 8 bytes
+    distance.ts                RSSI -> distancia aproximada y nivel de proximidad
+    time.ts                    Formatea fechas/horas
+    whatsapp.ts                 Abre un chat de WhatsApp por número de teléfono
   services/
-    bleService.ts            Escaneo (react-native-ble-plx) y anuncio (react-native-ble-advertiser)
-    permissions.ts            Permisos de Bluetooth/ubicación según versión de Android
-  store/useAppStore.ts       Estado global (zustand): perfil y lista de detectados persistidos,
-                              toggle/búsqueda en memoria
-  hooks/useProximityDetection.ts  Dos ciclos de vida BLE independientes: anunciar (atado al
-                              interruptor) y escanear (atado al botón "Buscar gente")
-  components/                DetectableToggle, SearchButton, DetectedPersonCard
-  screens/                    HomeScreen, ProfileScreen
+    bleService.ts               Escaneo (react-native-ble-plx) y anuncio (react-native-ble-advertiser) del token
+    permissions.ts               Permisos de Bluetooth/ubicación según versión de Android
+    firebase.ts / firebaseConfig.ts   Inicialización de Firebase (Firestore)
+    presenceService.ts           Publica/lee/suscribe el estado "quiero ser detectado" en Firestore
+    chatService.ts                Conversaciones y mensajes en Firestore, con el chequeo de presencia
+  store/useAppStore.ts          Estado global (zustand): token propio, perfil y lista de detectados
+                                 persistidos; toggle/búsqueda en memoria
+  hooks/useProximityDetection.ts   Dos ciclos de vida BLE independientes: anunciar+presencia (atado
+                                 al interruptor) y escanear (atado al botón "Buscar gente")
+  components/                   DetectableToggle, SearchButton, DetectedPersonCard
+  screens/                      HomeScreen, ProfileScreen, ChatScreen
   navigation/RootNavigator.tsx
+firestore.rules                 Reglas de seguridad de Firestore (raíz del repo)
 ```
 
 ## Por qué dos librerías de BLE
@@ -94,6 +129,13 @@ También puedes compilar en la nube sin instalar Android Studio/Xcode con
 ```bash
 npx eas build --platform android --profile development
 ```
+
+### Nota sobre Metro y Firebase
+
+`metro.config.js` desactiva `unstable_enablePackageExports` a propósito - el
+SDK de Firebase (v10+) todavía no es del todo compatible con la resolución
+de módulos basada en el campo `exports` que Metro activa por defecto en
+Expo SDK 53+. No hace falta tocar nada, ya viene configurado.
 
 ### Importante: se necesita hardware real
 

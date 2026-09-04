@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { DetectedPerson } from '../types';
 import { PROXIMITY_LABEL } from '../utils/distance';
 import { formatDetectedAt } from '../utils/time';
-import { openWhatsAppChat } from '../utils/whatsapp';
 
 const PROXIMITY_COLOR: Record<DetectedPerson['proximity'], string> = {
   'muy-cerca': '#16a34a',
@@ -13,10 +12,11 @@ const PROXIMITY_COLOR: Record<DetectedPerson['proximity'], string> = {
 
 interface Props {
   person: DetectedPerson;
-  onDelete: (id: string) => void;
+  onDelete: (token: string) => void;
+  onOpenChat: (person: DetectedPerson) => void;
 }
 
-export function DetectedPersonCard({ person, onDelete }: Props) {
+export function DetectedPersonCard({ person, onDelete, onOpenChat }: Props) {
   const color = PROXIMITY_COLOR[person.proximity];
 
   return (
@@ -31,13 +31,13 @@ export function DetectedPersonCard({ person, onDelete }: Props) {
           </Text>
           <Text style={styles.timestamp}>Detectado: {formatDetectedAt(person.detectedAt)}</Text>
         </View>
-        <Pressable onPress={() => onDelete(person.id)} hitSlop={10} style={styles.deleteButton}>
+        <Pressable onPress={() => onDelete(person.token)} hitSlop={10} style={styles.deleteButton}>
           <Text style={styles.deleteText}>✕</Text>
         </Pressable>
       </View>
 
-      <Pressable style={styles.whatsappButton} onPress={() => openWhatsAppChat(person.phone)}>
-        <Text style={styles.whatsappText}>💬 Abrir WhatsApp</Text>
+      <Pressable style={styles.chatButton} onPress={() => onOpenChat(person)}>
+        <Text style={styles.chatButtonText}>💬 Abrir chat</Text>
       </Pressable>
     </View>
   );
@@ -89,14 +89,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  whatsappButton: {
-    backgroundColor: '#dcfce7',
+  chatButton: {
+    backgroundColor: '#dbeafe',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  whatsappText: {
-    color: '#15803d',
+  chatButtonText: {
+    color: '#1d4ed8',
     fontSize: 14,
     fontWeight: '700',
   },

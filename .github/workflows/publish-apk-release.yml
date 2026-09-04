@@ -32,8 +32,8 @@ jobs:
         run: |
           tag="apk-run-${{ inputs.run_id }}"
           gh release create "$tag" \
-            dist/app-debug.apk \
+            dist/*.apk \
             --repo "${{ github.repository }}" \
-            --title "Gente Cerca - debug APK" \
-            --notes "Debug APK built from workflow run ${{ inputs.run_id }}." \
+            --title "Gente Cerca APK" \
+            --notes "APK built from workflow run ${{ inputs.run_id }}." \
             --target "${{ github.sha }}"

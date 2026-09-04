@@ -5,7 +5,7 @@ import { EMOJI_PALETTE } from '../constants/emoji';
 import type { DetectedPerson, UserProfile } from '../types';
 import { generateDeviceToken } from '../utils/token';
 
-type DetectedPersonUpdate = Omit<DetectedPerson, 'firstDetectedAt'>;
+type DetectedPersonUpdate = Omit<DetectedPerson, 'firstDetectedAt' | 'remoteOfflineSince'>;
 
 interface AppState {
   /** This install's own BLE broadcast token / Firestore presence+chat id. Generated once, persisted forever. */
@@ -23,6 +23,7 @@ interface AppState {
   setSearching: (value: boolean) => void;
   setBluetoothOn: (value: boolean) => void;
   upsertDetectedPerson: (person: DetectedPersonUpdate) => void;
+  setRemoteOfflineSince: (token: string, value: number | null) => void;
   removeDetectedPerson: (token: string) => void;
   clearDetectedPeople: () => void;
 }
@@ -49,9 +50,22 @@ export const useAppStore = create<AppState>()(
           return {
             detectedPeople: {
               ...state.detectedPeople,
-              [person.token]: { ...person, firstDetectedAt: existing?.firstDetectedAt ?? person.detectedAt },
+              [person.token]: {
+                ...person,
+                firstDetectedAt: existing?.firstDetectedAt ?? person.detectedAt,
+                // A live BLE advert is proof they're on right now, whatever
+                // the last Firestore presence check said.
+                remoteOfflineSince: null,
+              },
             },
           };
+        }),
+
+      setRemoteOfflineSince: (token, value) =>
+        set((state) => {
+          const existing = state.detectedPeople[token];
+          if (!existing) return state;
+          return { detectedPeople: { ...state.detectedPeople, [token]: { ...existing, remoteOfflineSince: value } } };
         }),
 
       removeDetectedPerson: (token) =>

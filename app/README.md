@@ -24,8 +24,12 @@ Son dos acciones independientes:
 3. A cada persona detectada la agrega (o actualiza, si ya la habías
    detectado antes) a una **lista persistente**: nombre, emoji, distancia
    aproximada ("Muy cerca", "Cerca", "Lejos" según el RSSI) y fecha/hora de
-   detección. La lista no expira sola — solo se borra si vaciás todo o
-   eliminás a alguien manualmente.
+   detección. Alejarte de esa persona no la borra de la lista - solo lo hace
+   apagar "Quiero ser detectado" **de su lado**: a partir de ese momento, si
+   pasa **1 hora** sin que lo vuelva a activar, la app la quita sola de tu
+   lista (chequeo periódico contra Firestore mientras la app está abierta,
+   ver `src/hooks/useDetectedPeoplePruning.ts`). También podés vaciar la
+   lista entera o eliminar a alguien manualmente en cualquier momento.
 4. Desde cada tarjeta de la lista podés tocar **"Abrir chat"**. La
    conversación sigue funcionando por internet aunque ninguno de los dos siga
    en rango de Bluetooth — para eso existe el backend. Si la otra persona

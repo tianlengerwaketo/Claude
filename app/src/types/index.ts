@@ -19,6 +19,13 @@ export interface DetectedPerson {
   firstDetectedAt: number;
   /** Timestamp (ms) of the most recent advertisement we received from this device. */
   detectedAt: number;
+  /**
+   * Timestamp (ms) since this person's "quiero ser detectado" was last seen
+   * off, or null while they're currently on (or we haven't checked yet).
+   * Once this has been non-null for OFFLINE_REMOVE_AFTER_MS, they're pruned
+   * from the list automatically - see useDetectedPeoplePruning.ts.
+   */
+  remoteOfflineSince: number | null;
 }
 
 /** Firestore doc at presence/{token} - the public, anonymous "profile card" behind a token. */

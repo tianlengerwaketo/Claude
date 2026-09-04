@@ -30,6 +30,7 @@ export function DetectedPersonCard({ person, onDelete, onOpenChat }: Props) {
             {person.distanceMeters >= 0 ? ` · ~${person.distanceMeters}m` : ''}
           </Text>
           <Text style={styles.timestamp}>Detectado: {formatDetectedAt(person.detectedAt)}</Text>
+          {person.remoteOfflineSince !== null && <Text style={styles.offlineTag}>Ya no disponible</Text>}
         </View>
         <Pressable onPress={() => onDelete(person.token)} hitSlop={10} style={styles.deleteButton}>
           <Text style={styles.deleteText}>✕</Text>
@@ -74,6 +75,12 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 12,
     color: '#9ca3af',
+    marginTop: 2,
+  },
+  offlineTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b45309',
     marginTop: 2,
   },
   deleteButton: {

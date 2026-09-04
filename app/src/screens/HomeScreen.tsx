@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DetectableToggle } from '../components/DetectableToggle';
 import { DetectedPersonCard } from '../components/DetectedPersonCard';
 import { SearchButton } from '../components/SearchButton';
+import { useDetectedPeoplePruning } from '../hooks/useDetectedPeoplePruning';
 import { useProximityDetection } from '../hooks/useProximityDetection';
 import { useAppStore } from '../store/useAppStore';
 import type { DetectedPerson } from '../types';
@@ -14,6 +15,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export function HomeScreen({ navigation }: Props) {
   useProximityDetection();
+  useDetectedPeoplePruning();
 
   const isDetectable = useAppStore((state) => state.isDetectable);
   const isSearching = useAppStore((state) => state.isSearching);

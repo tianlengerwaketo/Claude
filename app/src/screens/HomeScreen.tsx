@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { DetectableToggle } from '../components/DetectableToggle';
 import { NearbyPersonCard } from '../components/NearbyPersonCard';
+import { SearchButton } from '../components/SearchButton';
 import { useProximityDetection } from '../hooks/useProximityDetection';
 import { useAppStore } from '../store/useAppStore';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,8 +15,10 @@ export function HomeScreen({ navigation }: Props) {
   useProximityDetection();
 
   const isDetectable = useAppStore((state) => state.isDetectable);
+  const isSearching = useAppStore((state) => state.isSearching);
   const isBluetoothOn = useAppStore((state) => state.isBluetoothOn);
   const setDetectable = useAppStore((state) => state.setDetectable);
+  const setSearching = useAppStore((state) => state.setSearching);
   const profile = useAppStore((state) => state.profile);
   const nearbyPeople = useAppStore((state) => state.nearbyPeople);
   const hasHydrated = useAppStore((state) => state.hasHydrated);
@@ -40,11 +43,11 @@ export function HomeScreen({ navigation }: Props) {
 
       <DetectableToggle value={isDetectable} onValueChange={setDetectable} bluetoothOn={isBluetoothOn} />
 
-      {!isDetectable ? (
+      <SearchButton isSearching={isSearching} bluetoothOn={isBluetoothOn} onPress={() => setSearching(!isSearching)} />
+
+      {!isSearching ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            Activa "Quiero ser detectado" para ver a otras personas cercanas que también lo activaron.
-          </Text>
+          <Text style={styles.emptyText}>Toca "Buscar gente" para ver quién cerca activó "Quiero ser detectado".</Text>
         </View>
       ) : people.length === 0 ? (
         <View style={styles.emptyState}>

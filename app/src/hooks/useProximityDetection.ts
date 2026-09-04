@@ -13,15 +13,19 @@ import { useAppStore } from '../store/useAppStore';
 import { distanceToProximity, rssiToDistanceMeters } from '../utils/distance';
 
 /**
- * Owns the full BLE lifecycle around a single reciprocal toggle: turning
- * "quiero ser detectado" on both broadcasts your profile AND starts
- * scanning for others doing the same. Turning it off stops both and clears
- * the nearby list - you only see people while you're also visible to them.
+ * Owns the BLE lifecycle for two independent actions:
+ * - "quiero ser detectado" (isDetectable) broadcasts your profile so others
+ *   can find you. It says nothing about whether you're looking for anyone.
+ * - "buscar gente" (isSearching) scans for others broadcasting the same way.
+ *   It's a deliberate, on-demand action - opening the app never starts a
+ *   scan by itself, and only people who separately turned on their own
+ *   "quiero ser detectado" ever show up in it.
  * Mount this once near the root of the app.
  */
 export function useProximityDetection() {
   const profile = useAppStore((state) => state.profile);
   const isDetectable = useAppStore((state) => state.isDetectable);
+  const isSearching = useAppStore((state) => state.isSearching);
   const upsertNearbyPerson = useAppStore((state) => state.upsertNearbyPerson);
   const pruneStalePeople = useAppStore((state) => state.pruneStalePeople);
   const clearNearbyPeople = useAppStore((state) => state.clearNearbyPeople);
@@ -45,8 +49,30 @@ export function useProximityDetection() {
 
   useEffect(() => {
     if (!isDetectable) {
-      stopScanning();
       stopAdvertising();
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const granted = await ensurePermissions();
+      if (!granted || cancelled) return;
+      await startAdvertising(profile);
+    })();
+
+    return () => {
+      cancelled = true;
+      stopAdvertising();
+    };
+    // profile changes are picked up next time the toggle cycles, not live -
+    // re-broadcasting on every keystroke would spam the radio.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDetectable]);
+
+  useEffect(() => {
+    if (!isSearching) {
+      stopScanning();
       clearNearbyPeople();
       return;
     }
@@ -56,9 +82,6 @@ export function useProximityDetection() {
     (async () => {
       const granted = await ensurePermissions();
       if (!granted || cancelled) return;
-
-      await startAdvertising(profile);
-      if (cancelled) return;
 
       startScanning(({ id, rssi, name, emoji }) => {
         const distanceMeters = rssiToDistanceMeters(rssi);
@@ -80,10 +103,6 @@ export function useProximityDetection() {
       cancelled = true;
       clearInterval(pruneInterval);
       stopScanning();
-      stopAdvertising();
     };
-    // profile changes are picked up next time the toggle cycles, not live -
-    // re-broadcasting on every keystroke would spam the radio.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDetectable]);
+  }, [isSearching, ensurePermissions, upsertNearbyPerson, pruneStalePeople, clearNearbyPeople]);
 }

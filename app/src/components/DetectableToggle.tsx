@@ -13,7 +13,7 @@ export function DetectableToggle({ value, onValueChange, bluetoothOn }: Props) {
         <Text style={styles.title}>Quiero ser detectado</Text>
         <Text style={styles.subtitle}>
           {bluetoothOn
-            ? 'Otras personas con la app cerca podrán verte, y tú a ellas.'
+            ? 'Otras personas con la app cerca podrán encontrarte al buscar.'
             : 'Activa el Bluetooth del teléfono para usar esta función.'}
         </Text>
       </View>

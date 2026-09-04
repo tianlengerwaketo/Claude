@@ -7,12 +7,14 @@ import { EMOJI_PALETTE } from '../utils/profileEncoding';
 interface AppState {
   profile: UserProfile;
   isDetectable: boolean;
+  isSearching: boolean;
   isBluetoothOn: boolean;
   hasHydrated: boolean;
   nearbyPeople: Record<string, NearbyPerson>;
 
   setProfile: (profile: UserProfile) => void;
   setDetectable: (value: boolean) => void;
+  setSearching: (value: boolean) => void;
   setBluetoothOn: (value: boolean) => void;
   upsertNearbyPerson: (person: NearbyPerson) => void;
   pruneStalePeople: (olderThanMs: number) => void;
@@ -24,12 +26,14 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       profile: { name: '', emoji: EMOJI_PALETTE[0] },
       isDetectable: false,
+      isSearching: false,
       isBluetoothOn: false,
       hasHydrated: false,
       nearbyPeople: {},
 
       setProfile: (profile) => set({ profile }),
       setDetectable: (value) => set({ isDetectable: value }),
+      setSearching: (value) => set({ isSearching: value }),
       setBluetoothOn: (value) => set({ isBluetoothOn: value }),
 
       upsertNearbyPerson: (person) =>

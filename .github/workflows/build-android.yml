@@ -28,6 +28,10 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
       - name: Install JS dependencies
         working-directory: app
         run: npm ci

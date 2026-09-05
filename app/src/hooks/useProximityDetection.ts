@@ -8,7 +8,7 @@ import {
   stopAdvertising,
   stopScanning,
 } from '../services/bleService';
-import { requestBlePermissions } from '../services/permissions';
+import { requestBlePermissions, type BleRole } from '../services/permissions';
 import { getPresence, markNotDetectable, publishPresence } from '../services/presenceService';
 import { useAppStore } from '../store/useAppStore';
 import { distanceToProximity, rssiToDistanceMeters } from '../utils/distance';
@@ -57,17 +57,20 @@ export function useProximityDetection() {
   const setSearching = useAppStore((state) => state.setSearching);
   const setBluetoothOn = useAppStore((state) => state.setBluetoothOn);
 
-  const permissionsGranted = useRef(false);
+  // Advertising and scanning need different Android permissions and are
+  // requested independently, so a problem with one (e.g. a permission
+  // missing from the manifest) never blocks the other.
+  const permissionsGrantedByRole = useRef<Record<BleRole, boolean>>({ advertise: false, scan: false });
   const scanErrorShown = useRef(false);
   // Tokens we've already resolved a name/emoji for (or are resolving), so a
   // burst of repeated adverts from someone already on the list doesn't
   // trigger a Firestore read per blip.
   const knownTokens = useRef<Set<string>>(new Set());
 
-  const ensurePermissions = useCallback(async () => {
-    if (permissionsGranted.current) return true;
-    const result = await requestBlePermissions();
-    permissionsGranted.current = result.granted;
+  const ensurePermissions = useCallback(async (role: BleRole) => {
+    if (permissionsGrantedByRole.current[role]) return true;
+    const result = await requestBlePermissions(role);
+    permissionsGrantedByRole.current[role] = result.granted;
     if (!result.granted) showPermissionDeniedAlert(result.permanentlyDenied);
     return result.granted;
   }, []);
@@ -90,7 +93,7 @@ export function useProximityDetection() {
     let cancelled = false;
 
     (async () => {
-      const granted = await ensurePermissions();
+      const granted = await ensurePermissions('advertise');
       if (!granted) {
         if (!cancelled) setDetectable(false);
         return;
@@ -139,7 +142,7 @@ export function useProximityDetection() {
     let cancelled = false;
 
     (async () => {
-      const granted = await ensurePermissions();
+      const granted = await ensurePermissions('scan');
       if (!granted) {
         if (!cancelled) setSearching(false);
         return;

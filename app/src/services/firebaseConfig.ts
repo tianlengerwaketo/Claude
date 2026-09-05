@@ -15,10 +15,10 @@
  * See README.md's "Backend (chat)" section for the full walkthrough.
  */
 export const firebaseConfig = {
-  apiKey: 'REPLACE_ME',
-  authDomain: 'REPLACE_ME.firebaseapp.com',
-  projectId: 'REPLACE_ME',
-  storageBucket: 'REPLACE_ME.appspot.com',
-  messagingSenderId: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
+  apiKey: 'AIzaSyDtjhu-AirY7HhlnHQF13X9Q4T5so1crUE',
+  authDomain: 'gentecerca-4db38.firebaseapp.com',
+  projectId: 'gentecerca-4db38',
+  storageBucket: 'gentecerca-4db38.firebasestorage.app',
+  messagingSenderId: '622912159615',
+  appId: '1:622912159615:web:11e32f0229b9412310e44a',
 };

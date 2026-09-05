@@ -13,8 +13,14 @@ import { PermissionsAndroid, Platform } from 'react-native';
  *   first time it's used; there's nothing to request up front beyond having
  *   NSBluetoothAlwaysUsageDescription in Info.plist (see app.json).
  */
-export async function requestBlePermissions(): Promise<boolean> {
-  if (Platform.OS !== 'android') return true;
+export interface PermissionResult {
+  granted: boolean;
+  /** True if at least one permission was permanently denied ("don't ask again") - re-requesting won't show a dialog again, only Settings can fix it. */
+  permanentlyDenied: boolean;
+}
+
+export async function requestBlePermissions(): Promise<PermissionResult> {
+  if (Platform.OS !== 'android') return { granted: true, permanentlyDenied: false };
 
   const sdkInt = Platform.Version as number;
 
@@ -24,7 +30,11 @@ export async function requestBlePermissions(): Promise<boolean> {
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
     ]);
-    return Object.values(results).every((status) => status === PermissionsAndroid.RESULTS.GRANTED);
+    const statuses = Object.values(results);
+    return {
+      granted: statuses.every((status) => status === PermissionsAndroid.RESULTS.GRANTED),
+      permanentlyDenied: statuses.some((status) => status === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN),
+    };
   }
 
   const status = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, {
@@ -34,5 +44,8 @@ export async function requestBlePermissions(): Promise<boolean> {
       'Esta app no usa tu ubicación real ni la envía a ningún servidor.',
     buttonPositive: 'Entendido',
   });
-  return status === PermissionsAndroid.RESULTS.GRANTED;
+  return {
+    granted: status === PermissionsAndroid.RESULTS.GRANTED,
+    permanentlyDenied: status === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN,
+  };
 }

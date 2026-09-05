@@ -30,13 +30,14 @@ export interface ScannedPerson {
 let isScanning = false;
 let isAdvertising = false;
 
-export function startScanning(onFound: (person: ScannedPerson) => void): void {
+export function startScanning(onFound: (person: ScannedPerson) => void, onError?: (error: Error) => void): void {
   if (isScanning) return;
   isScanning = true;
 
   bleManager.startDeviceScan([APP_SERVICE_UUID], { allowDuplicates: true }, (error, device) => {
     if (error) {
       console.warn('[bleService] scan error', error);
+      onError?.(error);
       return;
     }
     if (!device || device.rssi == null || !device.manufacturerData) return;

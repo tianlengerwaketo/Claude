@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { Alert, Linking } from 'react-native';
 import {
   destroyBleManager,
   onBluetoothStateChange,
@@ -14,6 +15,24 @@ import { distanceToProximity, rssiToDistanceMeters } from '../utils/distance';
 
 /** How often to refresh our own presence doc while detectable, so a killed app doesn't look "on" forever. */
 const PRESENCE_HEARTBEAT_MS = 60_000;
+
+function showPermissionDeniedAlert(permanentlyDenied: boolean) {
+  if (permanentlyDenied) {
+    Alert.alert(
+      'Permiso de Bluetooth necesario',
+      'Denegaste el permiso de Bluetooth de forma permanente. Para usar esta app, activalo manualmente en Ajustes > Apps > Gente Cerca > Permisos.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Abrir Ajustes', onPress: () => Linking.openSettings() },
+      ]
+    );
+    return;
+  }
+  Alert.alert(
+    'Permiso de Bluetooth necesario',
+    'Esta app necesita permiso de Bluetooth para detectar o ser detectada. Volvé a intentarlo y aceptá el permiso.'
+  );
+}
 
 /**
  * Owns the BLE lifecycle for two independent actions:
@@ -34,9 +53,12 @@ export function useProximityDetection() {
   const isDetectable = useAppStore((state) => state.isDetectable);
   const isSearching = useAppStore((state) => state.isSearching);
   const upsertDetectedPerson = useAppStore((state) => state.upsertDetectedPerson);
+  const setDetectable = useAppStore((state) => state.setDetectable);
+  const setSearching = useAppStore((state) => state.setSearching);
   const setBluetoothOn = useAppStore((state) => state.setBluetoothOn);
 
   const permissionsGranted = useRef(false);
+  const scanErrorShown = useRef(false);
   // Tokens we've already resolved a name/emoji for (or are resolving), so a
   // burst of repeated adverts from someone already on the list doesn't
   // trigger a Firestore read per blip.
@@ -44,9 +66,10 @@ export function useProximityDetection() {
 
   const ensurePermissions = useCallback(async () => {
     if (permissionsGranted.current) return true;
-    const granted = await requestBlePermissions();
-    permissionsGranted.current = granted;
-    return granted;
+    const result = await requestBlePermissions();
+    permissionsGranted.current = result.granted;
+    if (!result.granted) showPermissionDeniedAlert(result.permanentlyDenied);
+    return result.granted;
   }, []);
 
   useEffect(() => {
@@ -68,9 +91,30 @@ export function useProximityDetection() {
 
     (async () => {
       const granted = await ensurePermissions();
-      if (!granted || cancelled) return;
-      await startAdvertising(deviceToken);
-      await publishPresence(deviceToken, profile);
+      if (!granted) {
+        if (!cancelled) setDetectable(false);
+        return;
+      }
+      if (cancelled) return;
+
+      try {
+        await startAdvertising(deviceToken);
+      } catch (error) {
+        if (cancelled) return;
+        console.warn('[useProximityDetection] startAdvertising failed', error);
+        Alert.alert(
+          'No se pudo activar "Quiero ser detectado"',
+          `Este teléfono no pudo empezar a transmitir por Bluetooth. Algunos modelos no admiten esta función.\n\nDetalle técnico: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        setDetectable(false);
+        return;
+      }
+
+      await publishPresence(deviceToken, profile).catch((error) => {
+        console.warn('[useProximityDetection] publishPresence failed', error);
+      });
     })();
 
     const heartbeat = setInterval(() => publishPresence(deviceToken, profile).catch(() => {}), PRESENCE_HEARTBEAT_MS);
@@ -96,7 +140,11 @@ export function useProximityDetection() {
 
     (async () => {
       const granted = await ensurePermissions();
-      if (!granted || cancelled) return;
+      if (!granted) {
+        if (!cancelled) setSearching(false);
+        return;
+      }
+      if (cancelled) return;
 
       startScanning(async ({ token, rssi }) => {
         const distanceMeters = rssiToDistanceMeters(rssi);
@@ -118,7 +166,10 @@ export function useProximityDetection() {
         }
 
         knownTokens.current.add(token);
-        const presence = await getPresence(token);
+        const presence = await getPresence(token).catch((error) => {
+          console.warn('[useProximityDetection] getPresence failed', error);
+          return null;
+        });
         if (cancelled) return;
         upsertDetectedPerson({
           token,
@@ -129,6 +180,13 @@ export function useProximityDetection() {
           proximity,
           detectedAt,
         });
+      }, (error) => {
+        if (scanErrorShown.current) return;
+        scanErrorShown.current = true;
+        Alert.alert(
+          'Error al buscar por Bluetooth',
+          `Detalle técnico: ${error.message}`
+        );
       });
     })();
 
@@ -136,5 +194,5 @@ export function useProximityDetection() {
       cancelled = true;
       stopScanning();
     };
-  }, [isSearching, ensurePermissions, upsertDetectedPerson]);
+  }, [isSearching, ensurePermissions, upsertDetectedPerson, setSearching]);
 }
